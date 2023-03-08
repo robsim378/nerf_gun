@@ -89,29 +89,6 @@ const int pressure_transducer_pin = A0;
 
 
 
-// ========== Display Functions ========================================================================================
-/**
- * Template display animation that I liked so it's the boot animation
- */
-void testfillrect(void) {
-    uint8_t color = 1;
-    for (int16_t i = 0; i < display.height() / 2; i += 3) {
-        // alternate colors
-        display.fillRect(i, i, display.width() - i * 2, display.height() - i * 2, color % 2);
-        display.display();
-        delay(1);
-        color++;
-    }
-}
-/**
- * Animation the displays show while booting
- */
-void boot_animation(void) {
-    testfillrect();
-}
-
-
-
 // ========== State setup ==============================================================================================
 // Firing
 
@@ -177,6 +154,42 @@ void tcaselect(uint8_t i) {
     Wire.write(1 << i);
     Wire.endTransmission();
 }
+
+
+
+// ========== General Display Functions ========================================================================================
+
+
+/**
+ * Template display animation that I liked so it's the boot animation
+ */
+void testfillrect(int i) {
+    uint8_t color = (i / 3) + 1;
+
+    // alternate colors
+    display.fillRect(i, i, display.width() - i * 2, display.height() - i * 2, color % 2);
+    display.display();
+}
+
+/**
+ * Animation the displays show while booting up
+ */
+void boot_animation(void) {
+    // Alternate displays for every frame of the animation. This way it plays on both displays at the same time.
+    for (int16_t i = 0; i < display.height() / 2; i += 3) {
+        tcaselect(ammo_display_i2c_multiplexer_bus);
+        testfillrect(i);
+
+        tcaselect(pressure_display_i2c_multiplexer_bus);
+        testfillrect(i);
+
+        delay(1);
+    }
+
+//    testfillrect();
+}
+
+
 
 // ========== Ammo Counter Functions ===================================================================================
 /**
@@ -318,34 +331,24 @@ void setup() {
     // Set up serial monitoring
     Serial.begin(9600);
 
+
+
+    // Configure displays
+
     // Wait for displays to power on
-
     delay(250);
 
-    // Configure displays
+    // Initialize ammo display
     tcaselect(ammo_display_i2c_multiplexer_bus);
-
-    // Initialize the display
     display.begin(oled_display_i2c_address, true);
 
-    // Display a cool animation while the gun initializes
-    boot_animation();
-    display.display();
-    //delay(2000);
-    display.clearDisplay();
-
-    delay(250);
-
-    // Configure displays
+    // Initialize pressure display
     tcaselect(pressure_display_i2c_multiplexer_bus);
-
-    // Initialize the display
     display.begin(oled_display_i2c_address, true);
 
     // Display a cool animation while the gun initializes
     boot_animation();
     display.display();
-    //delay(2000);
     display.clearDisplay();
 
 
@@ -367,16 +370,13 @@ void setup() {
 
 
 
-    // Displays
-
-
-
     // Initialize values
     ammo_encoder_last_state = digitalRead(ammo_encoder_clk_pin);
     target_pressure = analogRead(A1);
 //    reset_remaining_ammo();
     limiter_switch_last_state = 0;
     update_ammo_display();
+
 
 
     // Configure ammo encoder interrupts
