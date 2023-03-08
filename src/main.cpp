@@ -8,7 +8,10 @@
 #include <Adafruit_SH110X.h>
 #include <stdlib.h>
 //#include "../.pio/libdeps/uno/Adafruit SH110X/Adafruit_SH110X.h"
-// ------- Setup ---------------------------------------
+
+
+
+// ========== Setup ====================================================================================================
 
 // Definitions
 
@@ -17,6 +20,23 @@
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
 #define OLED_RESET -1
+
+
+
+// Serial logging
+
+//#define DEBUG     // Comment this line to disable serial logging
+
+// This code was ripped straight from reddit
+#ifdef DEBUG
+#define DEBUG_PRINT(x) Serial.print(x)
+#define DEBUG_PRINTLN(x) Serial.println(x)
+#else
+#define DEBUG_PRINT(x) do {} while (0)
+#define DEBUG_PRINTLN(x) do {} while (0)
+#endif
+
+
 
 /*
   idle state is when the gun is waiting for something to happen
@@ -29,8 +49,8 @@ enum firing_state fire_state = idle;
 Adafruit_SH1106G display = Adafruit_SH1106G(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
 
 
-// Pin setup
 
+// ========== Pin setup ================================================================================================
 // Firing
 const int trigger_switch_pin = 4;
 const int cancel_button_pin = 10;
@@ -40,14 +60,21 @@ const int limiter_switch_pin = 8;
 const int ammo_encoder_clk_pin = 2;
 const int ammo_encoder_dt_pin = 3;
 const int magazine_button_pin = 7;
-// Ammo counter display
 
-// Pressure
-// Pressure transducer
-const int pressure_transducer_pin = A0;
+// Ammo counter display
 
 // Pressure display
 
+
+// Pressure transducer
+const int pressure_transducer_pin = A0;
+
+
+
+// ========== Display Functions ========================================================================================
+/**
+ * Template display animation that I liked so it's the boot animation
+ */
 void testfillrect(void) {
     uint8_t color = 1;
     for (int16_t i = 0; i < display.height() / 2; i += 3) {
@@ -58,15 +85,16 @@ void testfillrect(void) {
         color++;
     }
 }
-
-
+/**
+ * Animation the displays show while booting
+ */
 void boot_animation(void) {
     testfillrect();
 }
 
 
-// State setup
 
+// ========== State setup ==============================================================================================
 // Firing
 
 // Whether or not the trigger is depressed
@@ -77,9 +105,10 @@ byte cancel_state = LOW;
 
 
 // Pressure
+
 // Whether or not the limiter switch is flipped on
-byte limiter_encoder_last_state = LOW;
-byte limiter_encoder_current_state = LOW;
+byte limiter_switch_last_state = LOW;
+byte limiter_switch_current_state = LOW;
 
 // The current pressure in the air tank in PSI
 byte pressure = 0;
@@ -104,12 +133,20 @@ byte ammo_encoder_current_state = 0;
 // Used to update the display in the main loop if the ammo encoder was changed, since ISRs do not like serial prints.
 byte ammo_encoder_updated = 0;
 
+
+
+// Magazine
+
 // Whether or not a magazine is inserted (0 if there is no magazine, 1 if there is one)
 byte magazine_button_last_state = 0;
 byte magazine_button_current_state = 0;
 
-// ------- Ammo Counter Functions -------------------------------
 
+
+// ========== Ammo Counter Functions ===================================================================================
+/**
+ * Updates the ammo counter display
+ */
 void update_ammo_display() {
 
     char remaining_ammo_str[3];
@@ -145,7 +182,7 @@ void update_ammo_display() {
     display.clearDisplay();
 
 
-
+    // TODO: Figure out what this is
     // display.setTextSize(4);
     // display.setTextColor(SH110X_WHITE, SH110X_BLACK); // 'inverted' text
     // display.setCursor(0, 20);
@@ -153,14 +190,21 @@ void update_ammo_display() {
     // display.display();
 }
 
+/**
+ * Updates the ammo counter display and prints the current ammo count to the serial log
+ */
 void print_ammo() {
-    Serial.print("Remaining ammo: ");
-    Serial.print(remaining_ammo);
-    Serial.print("/");
-    Serial.println(max_ammo);
+    DEBUG_PRINT("Remaining ammo: ");
+    DEBUG_PRINT(remaining_ammo);
+    DEBUG_PRINT("/");
+    DEBUG_PRINTLN(max_ammo);
     update_ammo_display();
 }
 
+/**
+ * Reduces the remaining ammo by 1 unless it is 0, in which case does nothing.
+ * Used when firing the gun.
+ */
 void reduce_current_ammo() {
     if (remaining_ammo > 0) {
         remaining_ammo--;
@@ -168,12 +212,19 @@ void reduce_current_ammo() {
     print_ammo();
 }
 
+/**
+ * Resets the remaining ammo to the max.
+ * Used when reloading the gun.
+ */
 void reset_remaining_ammo() {
     remaining_ammo = max_ammo;
     print_ammo();
 }
 
-// Reduce the max ammo shown on the ammo counter by 1
+/**
+ * Reduce the max ammo shown on the ammo counter by 1.
+ * Used with the ammo encoder to select the magazine size.
+ */
 void decrease_max_ammo() {
     // Prevent the max ammo from going below zero
     if (max_ammo > 0) {
@@ -188,8 +239,10 @@ void decrease_max_ammo() {
     ammo_encoder_updated = 1;
 }
 
-// Increase the max ammo shown on the ammo counter by 1
-void increase_max_ammo() {
+/**
+ * Increase the max ammo shown on the ammo counter by 1.
+ * Used with the ammo encoder to select the magazine size.
+ */void increase_max_ammo() {
     // Limit ammo to 2 digit numbers (largest nerf magazine is 35 rounds anyways)
     if (max_ammo < 99) {
         max_ammo++;
@@ -203,8 +256,9 @@ void increase_max_ammo() {
     ammo_encoder_updated = 1;
 }
 
-
-// ISR to update the status of the encoder.
+/**
+ * ISR to update the status of the ammo encoder.
+ */
 void update_ammo_encoder() {
 
     // Read the current state of the encoder's CLK pin
@@ -222,13 +276,13 @@ void update_ammo_encoder() {
 }
 
 
-// ------- Setup -------------------------------
-
-
+// ========== Setup ====================================================================================================
+/**
+ * Initialize everything necessary when the Arduino boots up.
+ */
 void setup() {
     // Set up serial monitoring
     Serial.begin(9600);
-
 
     // Configure displays
 
@@ -262,8 +316,6 @@ void setup() {
     pinMode(magazine_button_pin, INPUT_PULLUP);
 
 
-
-
     ammo_encoder_last_state = digitalRead(ammo_encoder_clk_pin);
 
     // Configure ammo encoder interrupts
@@ -279,11 +331,12 @@ void setup() {
 
 
 
-// ------- Gun Functions -------------------------------
-
-// Fire the gun by opening the pilot solenoid valve
+// ========== Gun Functions ============================================================================================
+/**
+ * Fire the gun by opening the pilot solenoid valve
+ */
 void fire() {
-    Serial.println("Firing");
+    DEBUG_PRINTLN("Firing");
 
     // Fire gun
     digitalWrite(LED_BUILTIN, HIGH);
@@ -294,9 +347,11 @@ void fire() {
     reduce_current_ammo();
 }
 
-// Cancel a shot by releasing air from the air tank to atmosphere
+/**
+ * Cancel a shot by releasing air from the air tank to atmosphere by opening the cancel valve.
+ */
 void cancel() {
-    Serial.println("Canceling");
+    DEBUG_PRINTLN("Canceling");
     digitalWrite(LED_BUILTIN, HIGH);
     delay(100);
     digitalWrite(LED_BUILTIN, LOW);
@@ -308,60 +363,62 @@ void cancel() {
 
 
 
-// ------- Pressure Limiter Functions -------------------------------
-
-// Turn on the limiter and reduce the target pressure to the limit if it is higher
+// ========== Pressure Limiter Functions ===============================================================================
+/**
+ * Turn on the limiter and reduce the target pressure to the limit if it is higher.
+ */
 void enable_limiter() {
-    Serial.println("Limiter enabled");
+    DEBUG_PRINTLN("Limiter enabled");
     // if (pressure >) {
 
     // }
 }
 
-// Turn on the limiter and reduce the target pressure to the limit if it is higher
+/**
+ * Turn off the limiter and raise the target pressure to the currently selected pressure if it is higher
+ */
 void disable_limiter() {
-    Serial.println("Limiter disabled");
+    DEBUG_PRINTLN("Limiter disabled");
 
     // if (pressure >) {
 
     // }
 }
 
-// Turn off the limiter and raise the target pressure to the currently selected pressure if it is higher
 
 
-
-
-// ------- Main Loop -------------------------------
+// ========== Main Loop ================================================================================================
+/**
+ * Main loop of the program.
+ */
 void loop() {
 
     // Set the states of all the buttons
     trigger_state = digitalRead(trigger_switch_pin);
     cancel_state = digitalRead(cancel_button_pin);
 
-    //limiter_encoder_current_state = digitalRead(limiter_switch_pin);
-    //ammo_encoder_current_state = digitalRead(ammo_encoder_clk_pin);
+    limiter_switch_current_state = digitalRead(limiter_switch_pin);
 
     magazine_button_current_state = digitalRead(magazine_button_pin);
 
     // Get the current pressure in the air tank
-    pressure = (150 * (analogRead(pressure_transducer_pin) / 1023.0));
-    Serial.print("Current pressure: ");
-    Serial.print(pressure);
-    Serial.println(" PSI");
+    pressure = (byte)(150 * (analogRead(pressure_transducer_pin) / 1023.0));
+    //DEBUG_PRINT("Current pressure: ");
+    //DEBUG_PRINT(pressure);
+    //DEBUG_PRINTLN(" PSI");
 
     // Ammo can be changed in an ISR, so the display should be updated constantly.
-    // As a side note, there is no serial logging at all when this happens because that slows down the ISR for rotating the
-    // encoder, leading to it feeling unresponsive. This is probably pretty inefficient, but if it doesn't cause problems
-    // it can stay like this.
     update_ammo_display();
 
+
+
+    // ========== Trigger ==============================================================================================
     // Trigger is depressed
     if (trigger_state == HIGH) {
         // Trigger has just been pressed, begin charging gun
         if (fire_state == idle) {
-            Serial.println("Trigger pressed");
-            Serial.println("Starting charging");
+            DEBUG_PRINTLN("Trigger pressed");
+            DEBUG_PRINTLN("Starting charging");
             fire_state = charging;
         }
     }
@@ -369,50 +426,44 @@ void loop() {
     else {
         // Trigger has been released, fire gun
         if (fire_state == charging || fire_state == charged) {
-            Serial.println("Trigger released");
+            DEBUG_PRINTLN("Trigger released");
             fire();
             fire_state = idle;
         }
             // Trigger has been released after canceling shot
         else if (fire_state == canceled) {
-            Serial.println("Trigger released after canceling");
+            DEBUG_PRINTLN("Trigger released after canceling");
             // Ensures a smooth transition while the physical switch is moving
             delay(5);
             fire_state = idle;
         }
     }
 
+
+
+    // ========== Cancel button ========================================================================================
     // Cancel button is depressed
     if (cancel_state == LOW) {
         // Gun is in a state that can be canceled from
         if (fire_state == charging || fire_state == charged) {
-            Serial.println("Cancel button pressed");
+            DEBUG_PRINTLN("Cancel button pressed");
             cancel();
             fire_state = canceled;
         }
     }
 
-    // Ammo encoder has been adjusted
-//    if (ammo_encoder_current_state != ammo_encoder_last_state) {
-//        // The encoder was rotated clockwise
-//        if (digitalRead(ammo_encoder_dt_pin) != ammo_encoder_current_state) {
-//            increase_max_ammo();
-//        }
-//        else {
-//            decrease_max_ammo();
-//        }
-//        ammo_encoder_last_state = ammo_encoder_current_state;
-//    }
 
+
+    // ========== Magazine =============================================================================================
     // Change in magazine status
     if (magazine_button_last_state != magazine_button_current_state) {
         // Magazine has been inserted
         if (magazine_button_current_state == HIGH) {
-            Serial.println("Magazine inserted");
+            DEBUG_PRINTLN("Magazine inserted");
             reset_remaining_ammo();
         }
         else {
-            Serial.println("Magazine removed");
+            DEBUG_PRINTLN("Magazine removed");
             remaining_ammo = 0;
             print_ammo();
             // Ensures a smooth transition while the physical switch is moving
@@ -421,16 +472,22 @@ void loop() {
         magazine_button_last_state = magazine_button_current_state;
     }
 
-    if (limiter_encoder_current_state != limiter_encoder_last_state) {
-        if (limiter_encoder_current_state == HIGH) {
+
+
+    // ========== Limiter ==============================================================================================
+    // Change in limiter status
+    if (limiter_switch_current_state != limiter_switch_last_state) {
+        if (limiter_switch_current_state == HIGH) {
             enable_limiter();
+            // Switch flickers a few times without this delay
             delay(5);
         }
         else {
             disable_limiter();
+            // Switch flickers a few times without this delay
             delay(5);
         }
-        limiter_encoder_last_state = limiter_encoder_current_state;
+        limiter_switch_last_state = limiter_switch_current_state;
     }
 
 }
