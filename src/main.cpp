@@ -37,13 +37,15 @@ const int cancel_button_pin = 10;
 const int limiter_switch_pin = 8;
 
 // Ammo counter
-const int ammo_encoder_pin_a = 5;
-const int ammo_encoder_pin_b = 6;
-const int magazine_switch_pin = 7;
+const int ammo_encoder_clk_pin = 2;
+const int ammo_encoder_dt_pin = 3;
+const int magazine_button_pin = 7;
 // Ammo counter display
 
 // Pressure
 // Pressure transducer
+const int pressure_transducer_pin = A0;
+
 // Pressure display
 
 void testfillrect(void) {
@@ -75,19 +77,18 @@ byte cancel_state = LOW;
 
 
 // Pressure
-
 // Whether or not the limiter switch is flipped on
-byte limiter_last_state = LOW;
-byte limiter_current_state = LOW;
+byte limiter_encoder_last_state = LOW;
+byte limiter_encoder_current_state = LOW;
 
 // The current pressure in the air tank in PSI
-byte pressure = 0;
+int pressure = 0;
 // The pressure that the compressor will bring the air tank to in PSI
-volatile byte target_pressure = 0;
+volatile float target_pressure = 0;
 // The maximum pressure while the limiter is enabled in PSI
-const byte max_limited_pressure = 50;
+const float max_limited_pressure = 50;
 // The maximum pressure while the limiter is disabled in PSI
-const byte max_unlimited_pressure = 100;
+const float max_unlimited_pressure = 100;
 
 
 
@@ -100,12 +101,15 @@ byte remaining_ammo = 10;
 // Used to monitor the rotary encoder used to select the magazine size
 byte ammo_encoder_last_state = 0;
 byte ammo_encoder_current_state = 0;
+// Used to update the display in the main loop if the ammo encoder was changed, since ISRs do not like serial prints.
+byte ammo_encoder_updated = 0;
 
 // Whether or not a magazine is inserted (0 if there is no magazine, 1 if there is one)
-byte magazine_last_state = 0;
-byte magazine_current_state = 0;
+byte magazine_button_last_state = 0;
+byte magazine_button_current_state = 0;
 
 // ------- Ammo Counter Functions -------------------------------
+
 void update_ammo_display() {
 
     char remaining_ammo_str[3];
@@ -181,7 +185,7 @@ void decrease_max_ammo() {
         remaining_ammo--;
     }
 
-    print_ammo();
+    ammo_encoder_updated = 1;
 }
 
 // Increase the max ammo shown on the ammo counter by 1
@@ -196,9 +200,29 @@ void increase_max_ammo() {
         remaining_ammo++;
     }
 
-    print_ammo();
+    ammo_encoder_updated = 1;
 }
 
+
+// ISR to update the status of the encoder.
+void update_ammo_encoder() {
+
+    // Read the current state of the encoder's CLK pin
+    ammo_encoder_current_state = digitalRead(ammo_encoder_clk_pin);
+
+    if (ammo_encoder_current_state != ammo_encoder_last_state) {  // && ammo_encoder_current_state == 1) {
+        if (digitalRead(ammo_encoder_dt_pin) != ammo_encoder_current_state) {
+            increase_max_ammo();
+        }
+        else {
+            decrease_max_ammo();
+        }
+    }
+    ammo_encoder_last_state = ammo_encoder_current_state;
+}
+
+
+// ------- Setup -------------------------------
 
 
 void setup() {
@@ -233,22 +257,19 @@ void setup() {
     pinMode(limiter_switch_pin, INPUT_PULLUP);
 
     // Ammo counter
-    pinMode(ammo_encoder_pin_a, INPUT);
-    pinMode(ammo_encoder_pin_b, INPUT);
-    pinMode(magazine_switch_pin, INPUT_PULLUP);
+    pinMode(ammo_encoder_clk_pin, INPUT);
+    pinMode(ammo_encoder_dt_pin, INPUT);
+    pinMode(magazine_button_pin, INPUT_PULLUP);
 
 
 
 
+    ammo_encoder_last_state = digitalRead(ammo_encoder_clk_pin);
 
+    // Configure ammo encoder interrupts
+    attachInterrupt(digitalPinToInterrupt(ammo_encoder_clk_pin), update_ammo_encoder, CHANGE);
+    attachInterrupt(digitalPinToInterrupt(ammo_encoder_dt_pin), update_ammo_encoder, CHANGE);
 
-
-
-    // Configure interrupts
-
-    // Pressure limiter
-    //attachInterrupt(digitalPinToInterrupt(limiter_switch_pin), enable_limiter, RISING);
-    //attachInterrupt(digitalPinToInterrupt(limiter_switch_pin), disable_limiter, FALLING);
 
     // Set defaults
     //reset_remaining_ammo();
@@ -318,10 +339,22 @@ void loop() {
     trigger_state = digitalRead(trigger_switch_pin);
     cancel_state = digitalRead(cancel_button_pin);
 
-    limiter_current_state = digitalRead(limiter_switch_pin);
+    //limiter_encoder_current_state = digitalRead(limiter_switch_pin);
+    //ammo_encoder_current_state = digitalRead(ammo_encoder_clk_pin);
 
-    ammo_encoder_current_state = digitalRead(ammo_encoder_pin_a);
-    magazine_current_state = digitalRead(magazine_switch_pin);
+    magazine_button_current_state = digitalRead(magazine_button_pin);
+
+    // Get the current pressure in the air tank
+    pressure = (150 * (analogRead(pressure_transducer_pin) / 1023.0));
+    Serial.print("Current pressure: ");
+    Serial.print(pressure);
+    Serial.println(" PSI");
+
+    // Ammo can be changed in an ISR, so the display should be updated constantly.
+    // As a side note, there is no serial logging at all when this happens because that slows down the ISR for rotating the
+    // encoder, leading to it feeling unresponsive. This is probably pretty inefficient, but if it doesn't cause problems
+    // it can stay like this.
+    update_ammo_display();
 
     // Trigger is depressed
     if (trigger_state == HIGH) {
@@ -360,21 +393,21 @@ void loop() {
     }
 
     // Ammo encoder has been adjusted
-    if (ammo_encoder_current_state != ammo_encoder_last_state) {
-        // The encoder was rotated clockwise
-        if (digitalRead(ammo_encoder_pin_b) != ammo_encoder_current_state) {
-            increase_max_ammo();
-        }
-        else {
-            decrease_max_ammo();
-        }
-        ammo_encoder_last_state = ammo_encoder_current_state;
-    }
+//    if (ammo_encoder_current_state != ammo_encoder_last_state) {
+//        // The encoder was rotated clockwise
+//        if (digitalRead(ammo_encoder_dt_pin) != ammo_encoder_current_state) {
+//            increase_max_ammo();
+//        }
+//        else {
+//            decrease_max_ammo();
+//        }
+//        ammo_encoder_last_state = ammo_encoder_current_state;
+//    }
 
     // Change in magazine status
-    if (magazine_last_state != magazine_current_state) {
+    if (magazine_button_last_state != magazine_button_current_state) {
         // Magazine has been inserted
-        if (magazine_current_state == HIGH) {
+        if (magazine_button_current_state == HIGH) {
             Serial.println("Magazine inserted");
             reset_remaining_ammo();
         }
@@ -385,11 +418,11 @@ void loop() {
             // Ensures a smooth transition while the physical switch is moving
             delay(5);
         }
-        magazine_last_state = magazine_current_state;
+        magazine_button_last_state = magazine_button_current_state;
     }
 
-    if (limiter_current_state != limiter_last_state) {
-        if (limiter_current_state == HIGH) {
+    if (limiter_encoder_current_state != limiter_encoder_last_state) {
+        if (limiter_encoder_current_state == HIGH) {
             enable_limiter();
             delay(5);
         }
@@ -397,7 +430,7 @@ void loop() {
             disable_limiter();
             delay(5);
         }
-        limiter_last_state = limiter_current_state;
+        limiter_encoder_last_state = limiter_encoder_current_state;
     }
 
 }
