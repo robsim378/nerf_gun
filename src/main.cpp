@@ -82,13 +82,13 @@ byte limiter_encoder_last_state = LOW;
 byte limiter_encoder_current_state = LOW;
 
 // The current pressure in the air tank in PSI
-int pressure = 0;
+byte pressure = 0;
 // The pressure that the compressor will bring the air tank to in PSI
-volatile float target_pressure = 0;
+volatile byte target_pressure = 0;
 // The maximum pressure while the limiter is enabled in PSI
-const float max_limited_pressure = 50;
+const byte max_limited_pressure = 50;
 // The maximum pressure while the limiter is disabled in PSI
-const float max_unlimited_pressure = 100;
+const byte max_unlimited_pressure = 100;
 
 
 
