@@ -23,11 +23,14 @@
 
 
 
+// The max pressure of the transducer. Depends on the model.
+#define TRANSDUCER_MAX_PRESSURE_PSI 150
+
+
 // Serial logging
 
-//#define DEBUG     // Comment this line to disable serial logging
-
 // This code was ripped straight from reddit
+//#define DEBUG     // Comment this line to disable serial logging
 #ifdef DEBUG
 #define DEBUG_PRINT(x) Serial.print(x)
 #define DEBUG_PRINTLN(x) Serial.println(x)
@@ -62,6 +65,11 @@ const int ammo_encoder_dt_pin = 3;
 const int magazine_button_pin = 7;
 
 // Ammo counter display
+
+
+
+// Pressure selector
+const int pressure_select_pot_pin = A1;
 
 // Pressure display
 
@@ -119,6 +127,9 @@ const byte max_limited_pressure = 50;
 // The maximum pressure while the limiter is disabled in PSI
 const byte max_unlimited_pressure = 100;
 
+// The lowest measured voltage when there is no pressure in the tank. The transducer is not perfect so this is calibration.
+const float transducer_offset = 0.507;
+
 
 
 // Ammo counter
@@ -130,8 +141,6 @@ byte remaining_ammo = 10;
 // Used to monitor the rotary encoder used to select the magazine size
 byte ammo_encoder_last_state = 0;
 byte ammo_encoder_current_state = 0;
-// Used to update the display in the main loop if the ammo encoder was changed, since ISRs do not like serial prints.
-byte ammo_encoder_updated = 0;
 
 
 
@@ -235,8 +244,6 @@ void decrease_max_ammo() {
     if (remaining_ammo > max_ammo) {
         remaining_ammo--;
     }
-
-    ammo_encoder_updated = 1;
 }
 
 /**
@@ -252,9 +259,7 @@ void decrease_max_ammo() {
     if (remaining_ammo == max_ammo - 1) {
         remaining_ammo++;
     }
-
-    ammo_encoder_updated = 1;
-}
+ }
 
 /**
  * ISR to update the status of the ammo encoder.
@@ -316,17 +321,19 @@ void setup() {
     pinMode(magazine_button_pin, INPUT_PULLUP);
 
 
+
+
+    // Initialize values
     ammo_encoder_last_state = digitalRead(ammo_encoder_clk_pin);
+    target_pressure = analogRead(A1);
+//    reset_remaining_ammo();
+    limiter_switch_last_state = 0;
+    update_ammo_display();
+
 
     // Configure ammo encoder interrupts
     attachInterrupt(digitalPinToInterrupt(ammo_encoder_clk_pin), update_ammo_encoder, CHANGE);
     attachInterrupt(digitalPinToInterrupt(ammo_encoder_dt_pin), update_ammo_encoder, CHANGE);
-
-
-    // Set defaults
-    //reset_remaining_ammo();
-    //enable_limiter();
-    update_ammo_display();
 }
 
 
@@ -387,30 +394,56 @@ void disable_limiter() {
 
 
 
+// ========== Pressure Selector Functions ==============================================================================
+void update_target_pressure(int signal) {
+    // Analog signals are a range from 0-1023, representing 0-5 volts.
+    double voltage =  signal * 5.00 / 1023;
+    // The potentiometer outputs 0 V at 0% rotated and 5 V at 100% rotated.
+    target_pressure = (byte)(voltage * (max_unlimited_pressure / 5.00));
+}
+
+
+// ========== Pressure Transducer Functions ============================================================================
+
+byte voltage_to_pressure_psi(double voltage) {
+    // The pressure transducer outputs 0.5 V at 0 PSI and 4.5 V at 150 PSI.
+    // Subtracting the offset gives us a range of 0-4 V == 0-150 PSI.
+    return (byte)((voltage - transducer_offset) * (TRANSDUCER_MAX_PRESSURE_PSI / 4.00));
+}
+
+void update_pressure(int signal) {
+    // Analog signals are a range from 0-1023, representing 0-5 volts.
+    double voltage =  signal * 5.00 / 1023;
+    pressure = voltage_to_pressure_psi(voltage);
+    if (pressure < 0) {
+        // If the transducer is calibrated correctly this should never happen, but just in case.
+        pressure = 0;
+    }
+}
+
+
 // ========== Main Loop ================================================================================================
 /**
  * Main loop of the program.
  */
 void loop() {
-
-    // Set the states of all the buttons
+    // Set the states of all the components
     trigger_state = digitalRead(trigger_switch_pin);
     cancel_state = digitalRead(cancel_button_pin);
-
     limiter_switch_current_state = digitalRead(limiter_switch_pin);
-
     magazine_button_current_state = digitalRead(magazine_button_pin);
+    // Read the pressure in the tank.
+    update_pressure(analogRead(pressure_transducer_pin));
+    // Read the pressure the pressure selector is set to
+    update_target_pressure(analogRead(pressure_select_pot_pin));
 
-    // Get the current pressure in the air tank
-    pressure = (byte)(150 * (analogRead(pressure_transducer_pin) / 1023.0));
+    // Print the current pressure in the air tank
     //DEBUG_PRINT("Current pressure: ");
     //DEBUG_PRINT(pressure);
     //DEBUG_PRINTLN(" PSI");
 
     // Ammo can be changed in an ISR, so the display should be updated constantly.
     update_ammo_display();
-
-
 
     // ========== Trigger ==============================================================================================
     // Trigger is depressed
@@ -439,8 +472,6 @@ void loop() {
         }
     }
 
-
-
     // ========== Cancel button ========================================================================================
     // Cancel button is depressed
     if (cancel_state == LOW) {
@@ -451,8 +482,6 @@ void loop() {
             fire_state = canceled;
         }
     }
-
-
 
     // ========== Magazine =============================================================================================
     // Change in magazine status
@@ -471,8 +500,6 @@ void loop() {
         }
         magazine_button_last_state = magazine_button_current_state;
     }
-
-
 
     // ========== Limiter ==============================================================================================
     // Change in limiter status
