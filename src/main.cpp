@@ -16,10 +16,15 @@
 // Definitions
 
 // OLED display
-#define i2c_Address 0x3c
+#define oled_display_i2c_address 0x3c
 #define SCREEN_WIDTH 128
 #define SCREEN_HEIGHT 64
 #define OLED_RESET -1
+
+
+
+// i2c
+#define TCA95481_address 0x70      // The address of the i2c multiplexer
 
 
 
@@ -64,8 +69,13 @@ const int ammo_encoder_clk_pin = 2;
 const int ammo_encoder_dt_pin = 3;
 const int magazine_button_pin = 7;
 
-// Ammo counter display
-
+// i2c
+// pins
+const int i2c_SDA_pin = A4;
+const int i2c_SCL_pin = A5;
+// Displays
+const int ammo_display_i2c_multiplexer_bus = 7;
+const int pressure_display_i2c_multiplexer_bus = 5;
 
 
 // Pressure selector
@@ -152,11 +162,29 @@ byte magazine_button_current_state = 0;
 
 
 
+// ========== i2c Multiplexer Functions ================================================================================
+/**
+ * Set the i2c multiplexer to the specified bus
+ * @param i The index of the bus to set the multiplexer to.
+ */
+void tcaselect(uint8_t i) {
+    // Buses are from 0-7. Higher than that is an invalid input.
+    if (i > 7) {
+        return;
+    }
+
+    Wire.beginTransmission(TCA95481_address);
+    Wire.write(1 << i);
+    Wire.endTransmission();
+}
+
 // ========== Ammo Counter Functions ===================================================================================
 /**
  * Updates the ammo counter display
  */
 void update_ammo_display() {
+    // Select the ammo display on the i2c multiplexer
+    tcaselect(ammo_display_i2c_multiplexer_bus);
 
     char remaining_ammo_str[3];
     char max_ammo_str[3];
@@ -166,14 +194,14 @@ void update_ammo_display() {
         remaining_ammo_str[1] = remaining_ammo_str[0];
         remaining_ammo_str[0] = '0';
     }
-    remaining_ammo_str[2] = NULL;
+    remaining_ammo_str[2] = '\0';
 
     itoa(max_ammo, max_ammo_str, 10);
     if (max_ammo < 10) {
         max_ammo_str[1] = max_ammo_str[0];
         max_ammo_str[0] = '0';
     }
-    max_ammo_str[2] = NULL;
+    max_ammo_str[2] = '\0';
 
 
     display.setTextSize(4);
@@ -281,6 +309,7 @@ void update_ammo_encoder() {
 }
 
 
+
 // ========== Setup ====================================================================================================
 /**
  * Initialize everything necessary when the Arduino boots up.
@@ -289,11 +318,15 @@ void setup() {
     // Set up serial monitoring
     Serial.begin(9600);
 
-    // Configure displays
+    // Wait for displays to power on
 
-    // Wait for display to power on
     delay(250);
-    display.begin(i2c_Address, true);
+
+    // Configure displays
+    tcaselect(ammo_display_i2c_multiplexer_bus);
+
+    // Initialize the display
+    display.begin(oled_display_i2c_address, true);
 
     // Display a cool animation while the gun initializes
     boot_animation();
@@ -301,7 +334,19 @@ void setup() {
     //delay(2000);
     display.clearDisplay();
 
+    delay(250);
 
+    // Configure displays
+    tcaselect(pressure_display_i2c_multiplexer_bus);
+
+    // Initialize the display
+    display.begin(oled_display_i2c_address, true);
+
+    // Display a cool animation while the gun initializes
+    boot_animation();
+    display.display();
+    //delay(2000);
+    display.clearDisplay();
 
 
 
@@ -320,6 +365,9 @@ void setup() {
     pinMode(ammo_encoder_dt_pin, INPUT);
     pinMode(magazine_button_pin, INPUT_PULLUP);
 
+
+
+    // Displays
 
 
 
