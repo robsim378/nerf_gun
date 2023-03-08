@@ -104,6 +104,8 @@ byte cancel_state = LOW;
 // Whether or not the limiter switch is flipped on
 byte limiter_switch_last_state = LOW;
 byte limiter_switch_current_state = LOW;
+// Whether or not the limiter is enabled.
+byte limiter_on = 1;
 
 // The current pressure in the air tank in PSI
 byte pressure = 0;
@@ -115,7 +117,7 @@ const byte max_limited_pressure = 50;
 const byte max_unlimited_pressure = 100;
 
 // The lowest measured voltage when there is no pressure in the tank. The transducer is not perfect so this is calibration.
-const float transducer_offset = 0.507;
+const float transducer_offset = 0.4834;
 
 
 
@@ -157,9 +159,7 @@ void tcaselect(uint8_t i) {
 
 
 
-// ========== General Display Functions ========================================================================================
-
-
+// ========== General Display Functions ================================================================================
 /**
  * Template display animation that I liked so it's the boot animation
  */
@@ -186,7 +186,6 @@ void boot_animation(void) {
         delay(1);
     }
 
-//    testfillrect();
 }
 
 
@@ -202,42 +201,45 @@ void update_ammo_display() {
     char remaining_ammo_str[3];
     char max_ammo_str[3];
 
-    itoa(remaining_ammo, remaining_ammo_str, 10);
-    if (remaining_ammo < 10) {
-        remaining_ammo_str[1] = remaining_ammo_str[0];
-        remaining_ammo_str[0] = '0';
-    }
+    // Convert the remaining ammo to a string, with preceding 0s for 1-digit numbers.
+//    itoa(remaining_ammo, remaining_ammo_str, 10);
+//    if (remaining_ammo < 10) {
+//        remaining_ammo_str[1] = remaining_ammo_str[0];
+//        remaining_ammo_str[0] = '0';
+//    }
+    sprintf(remaining_ammo_str, "%2d", remaining_ammo);
+
     remaining_ammo_str[2] = '\0';
 
-    itoa(max_ammo, max_ammo_str, 10);
-    if (max_ammo < 10) {
-        max_ammo_str[1] = max_ammo_str[0];
-        max_ammo_str[0] = '0';
-    }
+    // Perform the same conversion on the max ammo.
+//    itoa(max_ammo, max_ammo_str, 10);
+//    if (max_ammo < 10) {
+//        max_ammo_str[1] = max_ammo_str[0];
+//        max_ammo_str[0] = '0';
+//    }
+    sprintf(max_ammo_str, "%2d", max_ammo);
+
     max_ammo_str[2] = '\0';
 
-
+    // Configure text format
     display.setTextSize(4);
     display.setTextColor(SH110X_WHITE, SH110X_BLACK); // 'inverted' text
 
+    // Display remaining ammo
     display.setCursor(0, 20);
     display.print(remaining_ammo_str);
 
+    // Display divider
     display.setCursor(52, 20);
     display.print("/");
 
+    // Display max ammo
     display.setCursor(80, 20);
     display.print(max_ammo_str);
+
+    // Output to the display
     display.display();
     display.clearDisplay();
-
-
-    // TODO: Figure out what this is
-    // display.setTextSize(4);
-    // display.setTextColor(SH110X_WHITE, SH110X_BLACK); // 'inverted' text
-    // display.setCursor(0, 20);
-    // display.print(remaining_ammo_str);
-    // display.display();
 }
 
 /**
@@ -323,6 +325,117 @@ void update_ammo_encoder() {
 
 
 
+// ========== Pressure display functions ===============================================================================
+/**
+ * Displays a series of vertical bars to indicate the current pressure.
+ * There are 8 bars, each representing 1/8 of the target pressure. They fill from bottom to top as the pressure rises.
+ * The last bar fills a little bit early to display a bit more consistently.
+ * The higher bars are wider.
+ */
+void display_pressure_bar() {
+    // Display current pressure as a progress bar from 0 to the target pressure
+
+    // 7.5/8 of the way to the target
+    if (pressure >= target_pressure * 7.5 / 8.0) {
+        display.fillRect(0, 0, 40, 6, SH110X_WHITE);
+    }
+    else {
+        display.drawRect(0, 0, 40, 6, SH110X_WHITE);
+    }
+
+    // 7/8 of the way to the target
+    if (pressure >= target_pressure * 7 / 8.0) {
+        display.fillRect(0, 8, 30, 6, SH110X_WHITE);
+    }
+    else {
+        display.drawRect(0, 8, 30, 6, SH110X_WHITE);
+
+    }
+
+    // 6/8 of the way to the target
+    if (pressure >= target_pressure * 6 / 8.0) {
+        display.fillRect(0, 16, 25, 6, SH110X_WHITE);
+    }
+    else {
+        display.drawRect(0, 16, 25, 6, SH110X_WHITE);
+    }
+
+    // 5/8 of the way to the target
+    if (pressure >= target_pressure * 5 / 8.0) {
+        display.fillRect(0, 24, 22, 6, SH110X_WHITE);
+    }
+    else {
+        display.drawRect(0, 24, 22, 6, SH110X_WHITE);
+    }
+
+    // 4/8 of the way to the target
+    if (pressure >= target_pressure * 4 / 8.0) {
+        display.fillRect(0, 32, 19, 6, SH110X_WHITE);
+    }
+    else {
+        display.drawRect(0, 32, 19, 6, SH110X_WHITE);
+    }
+
+    // 3/8 of the way to the target
+    if (pressure >= target_pressure * 3 / 8.0) {
+        display.fillRect(0, 40, 18, 6, SH110X_WHITE);
+    }
+    else {
+        display.drawRect(0, 40, 18, 6, SH110X_WHITE);
+    }
+
+    // 2/8 of the way to the target
+    if (pressure >= target_pressure * 2 / 8.0) {
+        display.fillRect(0, 48, 17, 6, SH110X_WHITE);
+    }
+    else {
+        display.drawRect(0, 48, 17, 6, SH110X_WHITE);
+    }
+
+    // 1/8 of the way to the target
+    if (pressure >=  target_pressure / 8.0) {
+        display.fillRect(0, 56, 17, 6, SH110X_WHITE);
+    }
+    else {
+        display.drawRect(0, 56, 17, 6, SH110X_WHITE);
+    }
+}
+
+/**
+ * Updates the pressure display
+ */
+void update_pressure_display() {
+    // Select the ammo display on the i2c multiplexer
+    tcaselect(pressure_display_i2c_multiplexer_bus);
+
+    char target_pressure_str[4];
+    char current_pressure_str[4];
+
+    // Convert the remaining ammo to a string.
+    sprintf(target_pressure_str, "%03d", target_pressure);
+    target_pressure_str[3] = '\0';
+
+    // Perform the same conversion on the max ammo.
+    sprintf(current_pressure_str, "%03d", pressure);
+    current_pressure_str[3] = '\0';
+
+    // Configure text format
+    display.setTextSize(4);
+    display.setTextColor(SH110X_WHITE, SH110X_BLACK); // 'inverted' text
+
+    // Display target pressure numerically
+    display.setCursor(52, 20);
+    display.print(target_pressure_str);
+
+    // Display the current pressure as a progress bar towards the target pressure.
+    display_pressure_bar();
+
+    // Output to the display
+    display.display();
+    display.clearDisplay();
+}
+
+
 // ========== Setup ====================================================================================================
 /**
  * Initialize everything necessary when the Arduino boots up.
@@ -372,10 +485,11 @@ void setup() {
 
     // Initialize values
     ammo_encoder_last_state = digitalRead(ammo_encoder_clk_pin);
-    target_pressure = analogRead(A1);
+    target_pressure = analogRead(pressure_select_pot_pin);
 //    reset_remaining_ammo();
     limiter_switch_last_state = 0;
     update_ammo_display();
+    update_pressure_display();
 
 
 
@@ -420,24 +534,19 @@ void cancel() {
 
 // ========== Pressure Limiter Functions ===============================================================================
 /**
- * Turn on the limiter and reduce the target pressure to the limit if it is higher.
+ * Turn on the limiter.
  */
 void enable_limiter() {
     DEBUG_PRINTLN("Limiter enabled");
-    // if (pressure >) {
-
-    // }
+    limiter_on = 1;
 }
 
 /**
- * Turn off the limiter and raise the target pressure to the currently selected pressure if it is higher
+ * Turn off the limiter.
  */
 void disable_limiter() {
     DEBUG_PRINTLN("Limiter disabled");
-
-    // if (pressure >) {
-
-    // }
+    limiter_on = 0;
 }
 
 
@@ -445,9 +554,20 @@ void disable_limiter() {
 // ========== Pressure Selector Functions ==============================================================================
 void update_target_pressure(int signal) {
     // Analog signals are a range from 0-1023, representing 0-5 volts.
-    double voltage =  signal * 5.00 / 1023;
+    double voltage =  signal * 5.00 / 1024;
+
     // The potentiometer outputs 0 V at 0% rotated and 5 V at 100% rotated.
     target_pressure = (byte)(voltage * (max_unlimited_pressure / 5.00));
+
+    // Apply limiter if it is on
+    if (limiter_on && target_pressure > max_limited_pressure) {
+        target_pressure = max_limited_pressure;
+    }
+
+    // Apply hard limiter. This code shouldn't be reachable, but if something goes wrong this will prevent overfilling the tank.
+    if (target_pressure > max_unlimited_pressure) {
+        target_pressure = max_unlimited_pressure;
+    }
 }
 
 
@@ -461,7 +581,7 @@ byte voltage_to_pressure_psi(double voltage) {
 
 void update_pressure(int signal) {
     // Analog signals are a range from 0-1023, representing 0-5 volts.
-    double voltage =  signal * 5.00 / 1023;
+    double voltage =  signal * 5.00 / 1024;
     pressure = voltage_to_pressure_psi(voltage);
     if (pressure < 0) {
         // If the transducer is calibrated correctly this should never happen, but just in case.
@@ -485,13 +605,12 @@ void loop() {
     // Read the pressure the pressure selector is set to
     update_target_pressure(analogRead(pressure_select_pot_pin));
 
-    // Print the current pressure in the air tank
-    //DEBUG_PRINT("Current pressure: ");
-    //DEBUG_PRINT(pressure);
-    //DEBUG_PRINTLN(" PSI");
+
 
     // Ammo can be changed in an ISR, so the display should be updated constantly.
     update_ammo_display();
+    // Pressure changes frequently
+    update_pressure_display();
 
     // ========== Trigger ==============================================================================================
     // Trigger is depressed
