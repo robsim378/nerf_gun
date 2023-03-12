@@ -73,6 +73,7 @@ const int magazine_button_pin = 7;
 // pins
 const int i2c_SDA_pin = A4;
 const int i2c_SCL_pin = A5;
+
 // Displays
 const int ammo_display_i2c_multiplexer_bus = 7;
 const int pressure_display_i2c_multiplexer_bus = 5;
@@ -81,13 +82,13 @@ const int pressure_display_i2c_multiplexer_bus = 5;
 // Pressure selector
 const int pressure_select_pot_pin = A1;
 
-// Pressure display
-
-
 // Pressure transducer
 const int pressure_transducer_pin = A0;
 
-
+// Relays
+const int relay_A_pin = 5;
+const int relay_B_pin = 0;
+const int relay_C_pin = 1;
 
 // ========== State setup ==============================================================================================
 // Firing
@@ -442,7 +443,7 @@ void update_pressure_display() {
  */
 void setup() {
     // Set up serial monitoring
-    Serial.begin(9600);
+    //Serial.begin(9600);
 
 
 
@@ -481,6 +482,10 @@ void setup() {
     pinMode(ammo_encoder_dt_pin, INPUT);
     pinMode(magazine_button_pin, INPUT_PULLUP);
 
+    // Relays
+    pinMode(relay_A_pin, OUTPUT);
+    pinMode(relay_B_pin, OUTPUT);
+    pinMode(relay_C_pin, OUTPUT);
 
 
     // Initialize values
@@ -491,6 +496,10 @@ void setup() {
     update_ammo_display();
     update_pressure_display();
 
+    // Relays
+    digitalWrite(relay_A_pin, LOW);
+    digitalWrite(relay_B_pin, LOW);
+    digitalWrite(relay_C_pin, LOW);
 
 
     // Configure ammo encoder interrupts
@@ -684,4 +693,17 @@ void loop() {
         limiter_switch_last_state = limiter_switch_current_state;
     }
 
+    // ========== Relays ===============================================================================================
+    if (fire_state == charging) {
+        digitalWrite(relay_A_pin, HIGH);
+        digitalWrite(relay_B_pin, HIGH);
+        digitalWrite(relay_C_pin, HIGH);
+
+    }
+    else {
+        digitalWrite(relay_A_pin, LOW);
+        digitalWrite(relay_B_pin, LOW);
+        digitalWrite(relay_C_pin, LOW);
+
+    }
 }
